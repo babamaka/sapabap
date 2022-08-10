@@ -1,0 +1,404 @@
+*&---------------------------------------------------------------------*
+*& Report  ZFARMERDETAILS                                               *
+*&                                                                     *
+*&---------------------------------------------------------------------*
+*&                                                                     *
+*&                                                                     *
+*&---------------------------------------------------------------------*
+
+REPORT  ZFARMERDETAILS  NO STANDARD PAGE HEADING LINE-SIZE 350 LINE-COUNT 60.
+TABLES: lfbk, t012t, lfa1, lfb1, makt,  mara, bnka,
+        mseg, mkpf, ekko, ekbe, Zgrainrevs,
+        ekpo, t001w, adr2, rbkp, zconfirm,
+        bseg, bkpf,bsik,bsak, lfc1, adrc,
+        T077y, rseg.
+TYPES: BEGIN OF it,
+              lifnr TYPE lfa1-lifnr,
+              name1 TYPE lfa1-name1,
+              banka TYPE bnka-banka,
+              bankn TYPE lfbk-bankn,
+              bankl TYPE bnka-bankl,
+              adrnr TYPE lfa1-adrnr,
+              ort01 TYPE lfa1-ort01,
+       END OF it.
+DATA: wa_farmer TYPE it.
+DATA: cnt TYPE P, cnt2 TYPE P, cnt3 LIKE cnt, depotname LIKE t001w-name1, fiscalyr(4),
+      vendor LIKE lfa1-lifnr, natid2 LIKE lfa1-sortl, delPlant TYPE rseg-werks, delplantc TYPE C LENGTH 30.
+DATA: itabtrans LIKE lfc1 OCCURS 0 WITH HEADER LINE.
+DATA: bnkname TYPE bnka-banka, bnkacc TYPE lfbk-bankn,  bnkkey TYPE lfbk-bankl.
+
+data: begin of itab occurs 1000,
+bsart like ekko-bsart,
+     budat like s225-sptag,
+     mblnr like mkpf-mblnr,
+     matnr like s225-matnr,
+     werks like MSEG-werks,
+     mjahr like mkpf-mjahr,
+     ERFME like mseg-ERFME,
+     qty(8) type p decimals 3,
+     val(8) type p decimals 2,
+     avg(8) type p decimals 3,
+     BKTXT like mkpf-bktxt,
+     bwart like mseg-bwart,
+     ebeln like mseg-ebeln,
+     bukrs like mseg-bukrs,
+     xblnr like bkpf-xblnr,
+end of itab.
+
+data: begin of itab2 occurs 1000,
+bsart like ekko-bsart,
+     budat like s225-sptag,
+     mblnr like mkpf-mblnr,
+     matnr like s225-matnr,
+     werks like MSEG-werks,
+     mjahr like mkpf-mjahr,
+     ERFME like mseg-ERFME,
+     qty(8) type p decimals 3,
+     val like MSEG-DMBTR,
+     avg(8) type p decimals 3,
+     BKTXT like mkpf-bktxt,
+     bwart like mseg-bwart,
+     ebeln like mseg-ebeln,
+     bukrs like mseg-bukrs,
+     xblnr(10),
+     shkzg LIKE MSEG-shkzg,
+     MENGE LIKE MSEG-MENGE,
+     DMBTR LIKE MSEG-DMBTR,
+     lifnr like mseg-lifnr,
+     nem like lfa1-name1,
+     ignore,
+     adrnr(100),
+     stcd1 LIKE lfa1-stcd1,
+     sexkz LIKE lfa1-sexkz,
+     gbdat LIKE lfa1-gbdat,
+     regio LIKE lfa1-regio,
+     ort02 LIKE lfa1-ort02,
+     ort01 LIKE lfa1-ort01,
+     thetype(50),
+     tele LIKE adr2-tel_number,
+     mat LIKE mseg-matnr,
+     materialnm LIKE makt-maktx,
+     stras LIKE lfa1-stras,
+     sortl LIKE lfa1-sortl,
+end of itab2.
+data: begin of itabno occurs 1000,
+      thetelno LIKE adr2-tel_number,
+end of itabno,
+BEGIN OF itabDel OCCURS 0,
+      lifnr LIKE lfa1-lifnr,
+      werks LIKE t001w-werks,
+      plant LIKE t001w-name1,
+      cnt TYPE P DECIMALS 0,
+END OF itabdel.
+
+DATA: telno LIKE adr2-tel_number, telno2 LIKE telno, thetelno LIKE telno.
+DATA :   prevNo LIKE itab2-lifnr,  prevName LIKE itab2-nem,  prevCo LIKE itab2-bukrs,
+         prevPl LIKE itab2-werks,  prevdep LIKE depotname, theVendor LIKE lfa1-lifnr,
+         hasunconf TYPE P DECIMALS 0, loopcnt TYPE P DECIMALS 0.
+
+DATA : total TYPE bseg-dmbtr, grandtotal LIKE total,
+       debit LIKE grandtotal, credit LIKE debit.
+DATA: vendornm LIKE lfa1-name1.
+DATA: thebelnr LIKE bkpf-belnr.
+DATA: balancecum LIKE bseg-dmbtr, reconacc LIKE lfb1-akont, cntz TYPE P DECIMALS 0, fmgp LIKE t077x-txt30.
+PARAMETERS: bank AS CHECKBOX .
+PARAMETERS: simple AS CHECKBOX DEFAULT 'X'.
+SELECT-OPTIONS test FOR lfa1-lifnr.
+
+fiscalyr = '2021'.
+cntz = 0.
+IF bank NE 'X'.
+        IF simple EQ 'X'.
+                cntz = 0.
+                SELECT * INTO CORRESPONDING FIELDS OF wa_farmer FROM lfa1 INNER JOIN lfbk ON lfa1~lifnr EQ lfbk~lifnr
+                                                                          INNER JOIN bnka ON lfbk~bankl EQ bnka~bankl.
+                        SELECT SINGLE * FROM lfbk WHERE lifnr EQ wa_farmer-lifnr . "AND bankl LIKE 'NOSTRO%'.
+                        IF sy-subrc EQ 0.
+                           IF ( wa_farmer-banka(3) EQ 'NBS' OR wa_farmer-banka(3) EQ 'nbs' OR  wa_farmer-banka CP 'National*' OR  wa_farmer-banka CP 'national*').
+*      **                        IF wa_farmer-bankl CP 'NOSTRO*'.
+*      **                        ELSE.
+*      **                          IF ( wa_farmer-banka CP 'cbz*' OR wa_farmer-banka CP 'CBZ' OR wa_farmer-banka CP 'Cbz*'  OR wa_farmer-banka CP 'cbz' ).
+*      **                          IF ( wa_farmer-banka CP 'agri*' OR wa_farmer-banka CP 'AGRI' OR wa_farmer-banka CP 'Agri*' ).
+*      **                                    SELECT SINGLE * FROM adr2 WHERE addrnumber EQ wa_farmer-adrnr AND consnumber EQ '001'.
+*      **                                    IF sy-subrc EQ 0.
+*      **                                        telno = adr2-tel_number.
+*      **                                    ENDIF.
+*      **                                    SELECT SINGLE * FROM adr2 WHERE addrnumber EQ wa_farmer-adrnr AND consnumber EQ '002'.
+*      **                                    IF sy-subrc EQ 0.
+*      **                                        telno2 = adr2-tel_number.
+*      **                                    ENDIF.
+*      **                                    IF telno NE '' OR telno2 NE ''.
+*      **                                        PERFORM GetTheNumber.
+*      **                                    ENDIF.
+**                                    SELECT SINGLE * FROM mseg WHERE lifnr EQ wa_farmer-lifnr AND ( mjahr EQ '2022' OR mjahr EQ '2021' ).
+**                                    IF sy-subrc EQ 0.
+                                        WRITE:/ wa_farmer-lifnr, wa_farmer-name1, wa_farmer-banka(30),
+                                                wa_farmer-bankn, wa_farmer-bankl.  "thetelno, wa_farmer-ort01.
+                                        cntz = cntz + 1.
+                                     ENDIF.
+****                               ENDIF.
+                          ENDIF.
+
+                ENDSELECT.
+
+        ELSE.
+              SELECT * FROM lfa1.
+                          fmgp = ''.
+                          telno = ''.
+                          telno2 = ''.
+                          thetelno = ''.
+                          SELECT SINGLE * FROM t077Y WHERE ktokK EQ lfa1-ktokk AND spras EQ 'EN'.
+                          IF sy-subrc EQ 0.
+                                fmgp = t077y-txt30.
+                          ENDIF.
+
+                          SELECT SINGLE * FROM adr2 WHERE addrnumber EQ lfa1-adrnr AND consnumber EQ '001'.
+                          IF sy-subrc EQ 0.
+                              telno = adr2-tel_number.
+                          ENDIF.
+                          SELECT SINGLE * FROM adr2 WHERE addrnumber EQ lfa1-adrnr AND consnumber EQ '002'.
+                          IF sy-subrc EQ 0.
+                              telno2 = adr2-tel_number.
+                          ENDIF.
+                          IF telno NE '' OR telno2 NE ''.
+                              PERFORM GetTheNumber.
+                          ENDIF.
+
+                          WRITE:/ lfa1-name1, lfa1-sortl, lfa1-lifnr, fmgp, thetelno, lfa1-stras, lfa1-ort01, lfa1-ort02, lfa1-pfach, lfa1-pstl2, lfa1-pstlz, lfa1-regio.
+                    cntz = cntz + 1.
+*      ***              IF cntz = 1000.
+*      ***                EXIT.
+*      ***              ENDIF.
+              ENDSELECT.
+        ENDIF.
+        SKIP.
+        WRITE:/ cntz, 'Farmers'.
+ELSE.
+  PERFORM loadplants.
+            SELECT budat bktxt mblnr mjahr FROM mkpf into corresponding fields of table itab where budat BETWEEN '20200101' AND '20220531'.
+*            ** and mjahr NOT IN ('2015', '2016', '2017', '2018').
+*            *BETWEEN '20150401' AND '20160331' and mjahr  EQ '2015'.
+*            *BETWEEN '20160401' AND '20170331' and mjahr  EQ '2016'.
+*            *BETWEEN '20170401' AND '20180331' and mjahr  EQ '2017'.
+*            *BETWEEN '20180401' AND '20190331' and mjahr  EQ '2018'.
+
+            loop at itab.
+              SELECT    single *   FROM MSEG  WHERE smbln = itab-mblnr.
+              if sy-subrc = 0.
+                delete itab.
+              endif.
+            endloop.
+            write:/ '2021'.
+*            **WRITE: 'Before 2015'.
+*            *WRITE: '2015'.
+*            *WRITE: '2016'.
+*            *WRITE: '2017'.
+*            *WRITE: '2018'.
+*            *DATA mycnt.
+*            *mycnt = 0.
+            loop at itab.
+*            *mycnt = mycnt + 1.
+*            *IF mycnt EQ 5.
+*            *    EXIT.
+*            *ENDIF.
+              SELECT    *   FROM mseg  WHERE mblnr = itab-mblnr and  mjahr = itab-mjahr AND bwart EQ '101'  AND bukrs IN ('1000').
+                SELECT SINGLE * FROM MARA WHERE MATNR = MSEG-MATNR. " and matkl EQ '002'.
+*                IF SY-SUBRC = 0.
+*                        IF mara-matkl EQ '00' OR mara-matkl EQ '01' .
+*                              itab2-thetype = 'MAIZE'.
+*                        ELSE.
+*                              itab2-thetype = 'SOYA BEANS'.
+*                        ENDIF.
+                        telno = ''.
+                        telno2 = ''.
+                        thetelno = ''.
+                        itab2-materialnm = ''.
+                        SELECT SINGLE * FROM makt WHERE spras EQ 'EN' AND matnr EQ mara-matnr.
+                        IF sy-subrc EQ 0.
+                          itab2-mat = mara-matnr.
+                          itab2-materialnm = makt-maktx.
+                        ENDIF.
+                        select single * from lfa1 where lifnr = mseg-lifnr.
+                        IF sy-subrc EQ 0.
+                             itab2-lifnr = lfa1-lifnr.
+                             itab2-matnr = mseg-matnr.
+                             itab2-nem = lfa1-name1.
+                             itab2-sortl = lfa1-sortl.
+                             itab2-sexkz = lfa1-sexkz.
+                             itab2-gbdat = lfa1-gbdat.
+                             itab2-regio = lfa1-regio.
+                             itab2-ort02 = lfa1-ort02.
+                             itab2-ort01 = lfa1-ort01.
+                             itab2-stras = lfa1-stras.
+                             itab2-menge = mseg-menge.
+                             itab2-dmbtr = mseg-dmbtr.
+                            CONCATENATE lfa1-stras ` ` lfa1-ort01 INTO itab2-adrnr.
+                            itab2-stcd1 = lfa1-stcd1.
+                            IF lfa1-lifnr(6) NE '000600' AND lfa1-lifnr(6) NE '000860' AND lfa1-lifnr(6) NE '000GM0' AND lfa1-lifnr(6) NE '000599'.
+                                    SELECT SINGLE * FROM adr2 WHERE addrnumber EQ lfa1-adrnr AND consnumber EQ '001'.
+                                    IF sy-subrc EQ 0.
+                                        telno = adr2-tel_number.
+                                    ENDIF.
+                                    SELECT SINGLE * FROM adr2 WHERE addrnumber EQ lfa1-adrnr AND consnumber EQ '002'.
+                                    IF sy-subrc EQ 0.
+                                        telno2 = adr2-tel_number.
+                                    ENDIF.
+                                    IF telno NE '' OR telno2 NE ''.
+                                        PERFORM GetTheNumber.
+                                    ENDIF.
+                                    itab2-tele = thetelno.
+                              APPEND itab2.
+                            ENDIF.
+                        ENDIF.
+              ENDSELECT.
+            endloop.
+
+            SORT itab2 BY lifnr.
+***            DELETE ADJACENT DUPLICATES FROM itab2.
+            DATA: cntt2 TYPE P.
+            cntt2 = 0.
+
+            LOOP AT itab2.
+*            **cntt2 = cntt2 + 1.
+*            **IF cntt2  = 10.
+*            **    EXIT.
+*            **ENDIF.
+*            *    WRITE:/ itab2-lifnr, 10 itab2-stcd1, 30 itab2-thetype, 45 itab2-nem, 75 itab2-adrnr, 105 itab2-sexkz, 115 itab2-gbdat,
+*            *            126 itab2-regio,142 itab2-ort02, 163 itab2-ort01, 200 thetelno.
+                natid2 = ''.
+                SELECT SINGLE * FROM lfa1 WHERE lifnr EQ itab2-lifnr.
+                IF sy-subrc EQ 0.
+                    natid2 = lfa1-sortl.
+                    itab2-thetype = lfa1-ktokk.
+                    MODIFY itab2.
+                ENDIF.
+                vendor = itab2-lifnr.
+                PERFORM GetFarmerBalance.
+                reconacc = ''.
+                SELECT SINGLE * FROM lfb1 WHERE lifnr EQ itab2-lifnr.
+                IF sy-subrc EQ 0.
+                      reconacc = lfb1-akont.
+                ENDIF.
+                SELECT SINGLE * FROM lfbk WHERE lifnr EQ itab2-lifnr.
+                IF sy-subrc EQ 0.
+                    SELECT SINGLE * FROM bnka WHERE bankl EQ lfbk-bankl.
+                    IF sy-subrc EQ 0.
+                      SELECT SINGLE * FROM bnka WHERE bankl EQ lfbk-bankl.
+*                        SELECT SINGLE * FROM bnka WHERE ( banka LIKE '%Steward%' OR banka LIKE '%STEWARD%' OR banka LIKE '%steward%' )
+*                                                  AND bankl EQ lfbk-bankl.
+*                          SELECT SINGLE * FROM bnka WHERE ( banka LIKE '%Women%' OR banka LIKE '%WOMEN%' OR banka LIKE '%women%' )
+*                                                  AND bankl EQ lfbk-bankl.
+*            *                                        Zimbabwe Women Microfinance Bank
+                        IF sy-subrc EQ 0.
+                            SELECT SINGLE * FROM lfbk WHERE lifnr EQ itab2-lifnr AND bankl LIKE 'NOSTRO%'.
+                            IF sy-subrc GT 0.
+                              PERFORM GetDeliveredDepot.
+                              WRITE:/ itab2-lifnr, 10 itab2-stcd1, 30 itab2-thetype, 45 itab2-nem, 75 lfbk-bankl, 105 itab2-ort01,
+                                      115 bnka-banka(30), 150 lfbk-bankn, 175 itab2-adrnr, 200 total, 225 itab2-tele(14), 238 natid2, 250 reconacc, delplant, delplantc.
+*    **                               WRITE:/ delplant, delplantc(20), itab2-lifnr, itab2-nem, itab2-sortl, itab2-matnr, itab2-materialnm(20), itab2-menge, itab2-dmbtr,
+*    **                                       itab2-bwart, itab2-tele(14), itab2-adrnr(20), itab2-stras(20), itab2-ort01(20), itab2-regio.
+                             ENDIF.
+                        ENDIF.
+*            *        ELSE.
+*            *            WRITE:/ itab2-lifnr, 10 itab2-stcd1, 30 itab2-thetype, 45 itab2-nem, 75 lfbk-bankl, 105 itab2-ort01, 175 itab2-adrnr, 200 total, 225 itab2-tele(14), 238 natid2, 250 reconacc.
+                    ENDIF.
+*            **    ELSE.
+*            **        WRITE:/ itab2-lifnr, 10 itab2-stcd1, 30 itab2-thetype, 45 itab2-nem, 105 itab2-ort01, 175 itab2-adrnr, 200 total, 225 itab2-tele(14), 238 natid2, 250 reconacc.
+                ENDIF.
+
+*            *    WRITE:/ itab2-lifnr, 10 itab2-stcd1, 30 itab2-thetype, 45 itab2-nem, 75 itab2-werks, 105 itab2-sexkz, 115 itab2-gbdat, 126 thetelno, 140 depotname.
+            ENDLOOP.
+   ENDIF.
+FORM GetTheNumber.
+
+    IF telno(2) EQ '07'.
+        thetelno = telno+1.
+    ELSE.
+        IF telno2(2) EQ '07'.
+           thetelno = telno2+1.
+        ELSE.
+            thetelno = ''.
+        ENDIF.
+    ENDIF.
+
+    CONDENSE thetelno NO-GAPS.
+    IF STRLEN( thetelno ) EQ 9.
+        CONCATENATE '263' thetelno INTO thetelno.
+    ELSE.
+        thetelno = ''.
+    ENDIF.
+    CONDENSE thetelno NO-GAPS.
+ENDFORM.
+
+FORM GetFarmerBalance.
+    balancecum = 0.
+    total = 0.
+    credit = 0.
+    debit = 0.
+    CLEAR itabtrans.
+    REFRESH itabtrans.
+***    SELECT * FROM lfc1 INTO CORRESPONDING FIELDS OF itabtrans WHERE gjahr EQ fiscalyr AND lifnr EQ vendor.
+***        APPEND itabtrans.
+***    ENDSELECT.
+    SELECT * FROM lfc1 INTO CORRESPONDING FIELDS OF itabtrans WHERE gjahr EQ fiscalyr AND lifnr EQ vendor.
+        APPEND itabtrans.
+    ENDSELECT.
+    LOOP AT itabtrans.
+        balancecum = balancecum + itabtrans-umsav.
+        debit = debit + itabtrans-um01s + itabtrans-um02s + itabtrans-um03s + itabtrans-um04s +
+                itabtrans-um05s + itabtrans-um06s + itabtrans-um07s + itabtrans-um08s + itabtrans-um09s +
+                itabtrans-um10s + itabtrans-um11s + itabtrans-um12s + itabtrans-um13s + itabtrans-um14s +
+                itabtrans-um15s + itabtrans-um16s.
+        credit = credit + itabtrans-um01h + itabtrans-um02h + itabtrans-um03h + itabtrans-um04h +
+                itabtrans-um05h + itabtrans-um06h + itabtrans-um07h + itabtrans-um08h + itabtrans-um09h +
+                itabtrans-um10h + itabtrans-um11h + itabtrans-um12h + itabtrans-um13h + itabtrans-um14h +
+                itabtrans-um15h + itabtrans-um16h.
+        total = balancecum + debit - credit.
+             vendornm = ''.
+             SELECT SINGLE * FROM lfa1 WHERE lifnr EQ itabtrans-lifnr.
+             IF sy-subrc EQ 0.
+                 vendornm = lfa1-name1.
+             ENDIF.
+     ENDLOOP.
+ENDFORM.
+FORM LoadPlants.
+     SELECT * FROM rbkp WHERE stblg EQ space AND tcode NE 'MR8M' AND gjahr GE 2019.
+       select * from rseg where belnr = rbkp-belnr and gjahr = rbkp-gjahr.
+          select single * from mara where matnr = rseg-matnr.
+          IF sy-subrc EQ 0.
+              IF ( mara-matkl EQ '008'  OR mara-matkl EQ  '002' OR mara-matkl EQ  '001' OR mara-matkl EQ  '009'  OR mara-matkl EQ  '0000').
+                delPlant = rseg-werks.
+                itabdel-lifnr = rbkp-lifnr.
+                itabdel-werks = rseg-werks.
+                SELECT SINGLE * FROM t001w WHERE werks EQ rseg-werks.
+                IF sy-subrc EQ 0.
+                  itabdel-plant = t001w-name1.
+                ENDIF.
+                itabdel-cnt = 1.
+                COLLECT itabdel.
+              ENDIF.
+          ENDIF.
+      endselect.
+   ENDSELECT.
+ENDFORM.                              "loadplants
+FORM GetDeliveredDepot.
+          LOOP AT itabdel WHERE lifnr EQ itab2-lifnr.
+              delplant = itabdel-werks.
+              delplantc = itabdel-plant.
+              EXIT.
+          ENDLOOP.
+ENDFORM.                              "getdelivereddepot
+FORM getBankdtls.
+                SELECT SINGLE * FROM lfbk WHERE lifnr EQ itab2-lifnr.
+                IF sy-subrc EQ 0.
+                    SELECT SINGLE * FROM bnka WHERE bankl EQ lfbk-bankl.
+                    IF sy-subrc EQ 0.
+                      SELECT SINGLE * FROM bnka WHERE bankl EQ lfbk-bankl.
+                      IF sy-subrc EQ 0.
+                              bnkname = bnka-banka(30).
+                              bnkacc =  lfbk-bankn.
+                              bnkkey = lfbk-bankl.
+                      ENDIF.
+                    ENDIF.
+                ENDIF.
+ENDFORM.                               "getbankdtls
