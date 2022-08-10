@@ -1,0 +1,166 @@
+*&---------------------------------------------------------------------*
+*& Report ZINVOICES
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZINVOICES.
+TABLES: bkpf, bseg, lfa1, tbslt, lfb1, skat, t001w, ekkn.
+TYPES: BEGIN OF itabInv,
+            belnr TYPE bkpf-belnr,
+            bktxt TYPE bkpf-bktxt,
+            waers TYPE bkpf-waers,
+            cpudt TYPE bkpf-cpudt,
+            cputm TYPE bkpf-cputm,
+            tcode TYPE bkpf-tcode,
+            stblg TYPE bkpf-stblg,
+            xblnr TYPE bkpf-xblnr,
+            bukrs TYPE bkpf-bukrs,
+            buzei TYPE bseg-buzei,
+            buzid TYPE bseg-buzid,
+            augdt TYPE bseg-augdt,
+            lifnr TYPE bseg-lifnr,
+            name1 TYPE lfa1-name1,
+            koart TYPE bseg-koart,
+            shkzg TYPE bseg-shkzg,
+            usnam TYPE bkpf-usnam,
+            dmbtr TYPE bseg-dmbtr,
+            wrbtr TYPE bseg-wrbtr,
+            bschl TYPE bseg-bschl,
+            ltext TYPE tbslt-ltext,
+            doccat TYPE bkpf-doccat,
+            akont TYPE lfb1-akont,
+            txt20 TYPE skat-txt20,
+            hkont TYPE bseg-hkont,
+            werks TYPE bseg-werks,
+            gjahr TYPE bseg-gjahr,
+            ebeln TYPE bseg-ebeln,
+       END OF itabInv.
+        DATA: BEGIN OF itabl,
+                     sakto TYPE ekkn-sakto,
+                     dmbtr TYPE bseg-dmbtr,
+              END OF itabl.
+DATA: itabGL LIKE itabl OCCURS 0 WITH HEADER LINE.
+DATA: itabTotal LIKE itabl OCCURS 0 WITH HEADER LINE.
+DATA: itabdocs TYPE TABLE OF itabInv WITH HEADER LINE.
+DATA: wa_docs TYPE itabinv, plnt TYPE C LENGTH 10, depot TYPE t001w-werks.
+DATA: cnt TYPE P DECIMALS 0.
+DATA: glacc TYPE ekkn-sakto, glAmt TYPE bseg-dmbtr, glname TYPE skat-txt50, grandtotal TYPE bseg-dmbtr.
+SELECTION-SCREEN SKIP.
+SELECT-OPTIONS: thedate FOR   bkpf-cpudt.
+SELECTION-SCREEN SKIP.
+SELECT-OPTIONS: Supplier For bseg-lifnr.
+SELECTION-SCREEN SKIP.
+SELECT-OPTIONS: recon FOR lfb1-akont.
+*****PARAMETERS: chk AS CHECKBOX.
+
+        CLEAR itabdocs.
+        REFRESH itabdocs.
+        SELECT * INTO CORRESPONDING FIELDS OF @wa_docs  FROM bkpf INNER JOIN bseg
+                                                ON bkpf~belnr EQ bseg~belnr   AND bkpf~gjahr EQ bseg~gjahr
+                                                AND bkpf~bukrs EQ bseg~bukrs
+                                                INNER JOIN lfa1 ON bseg~lifnr EQ lfa1~lifnr
+                                                INNER JOIN tbslt ON bseg~bschl EQ tbslt~bschl
+                                                INNER JOIN lfb1 ON lfb1~lifnr EQ lfa1~lifnr
+                                                INNER JOIN skat ON skat~saknr EQ lfb1~akont
+                                                WHERE bkpf~bukrs EQ '1000' AND bseg~bukrs EQ '1000'
+                                                AND bkpf~cpudt IN @thedate
+                                                AND lfa1~lifnr IN @supplier AND skat~spras EQ 'EN'
+                                                AND lfb1~akont IN @recon AND lfb1~bukrs EQ '1000'
+                                                AND tbslt~SPRAS EQ 'EN'
+******          AND bseg~belnr EQ '5100548433'
+                                                AND  bseg~bschl EQ '31'
+                                                ORDER BY bkpf~belnr DESCENDING, bseg~buzei.
+              IF wa_docs-shkzg EQ 'H'.
+                wa_docs-dmbtr = wa_docs-dmbtr * -1.
+              ENDIF.
+              CASE  wa_docs-waers.
+                    WHEN 'USD'.
+                        wa_docs-waers = 'ZWL'.
+                    WHEN 'USDF'.
+                        wa_docs-waers = 'USD'.
+              ENDCASE.
+              APPEND wa_docs TO itabdocs.
+       CLEAR wa_docs.
+       ENDSELECT.
+
+        CLEAR wa_docs.
+        CLEAR itabtotal.
+        REFRESH itabtotal.
+        grandtotal = 0.
+        LOOP AT itabdocs.
+              plnt  = ''.
+              depot = ''.
+              glname = ''.
+              glamt = 0.
+              CLEAR wa_docs.
+              CLEAR itabgl.
+              REFRESH itabgl.
+              glacc = ''.
+              SELECT * INTO CORRESPONDING FIELDS OF @wa_docs FROM  bseg INNER JOIN bkpf ON bkpf~belnr EQ bseg~belnr
+                                 AND bseg~belnr EQ @itabdocs-belnr
+                                 AND bkpf~gjahr EQ bseg~gjahr AND bseg~gjahr EQ @itabdocs-gjahr AND bkpf~bukrs EQ bseg~bukrs
+                                 AND  bkpf~bukrs EQ '1000' AND bseg~bukrs EQ '1000'
+                                 AND bseg~bukrs EQ @itabdocs-bukrs
+                                 WHERE ( bseg~bschl EQ '40' OR bseg~bschl EQ '86' ) AND bseg~koart EQ 'S'.
+                    IF wa_docs-shkzg EQ 'H'.
+                      wa_docs-dmbtr = wa_docs-dmbtr * -1.
+                    ENDIF.
+
+                           SELECT  SINGLE sakto INTO itabgl-sakto FROM ekkn WHERE ebeln EQ wa_docs-ebeln.
+                           IF sy-subrc EQ 0.
+                                 itabgl-dmbtr = wa_docs-dmbtr.
+                                 COLLECT itabgl.
+                           ELSE.
+                                  itabgl-sakto = wa_docs-hkont.
+                                  itabgl-dmbtr = wa_docs-dmbtr.
+                                  COLLECT itabgl.
+                           ENDIF.
+                     depot = wa_docs-werks.
+                     SELECT SINGLE name1 INTO plnt FROM t001w WHERE werks EQ depot AND spras EQ 'EN'.
+               CLEAR wa_docs.
+               ENDSELECT.
+
+               cnt = 1.
+               LOOP AT itabgl.
+                 glacc = itabgl-sakto.
+                 glamt = itabgl-dmbtr.
+                 itabtotal-sakto = glacc.
+                 itabtotal-dmbtr = glamt.
+                 COLLECT itabtotal.
+                 SELECT SINGLE txt20 INTO glname FROM skat WHERE saknr EQ glacc AND spras EQ 'EN' AND ktopl EQ '1000'.
+                 IF sy-subrc GT 0.
+                   glname = ''.
+                 ENDIF.
+                 IF cnt EQ 1.
+                       WRITE: 2 itabdocs-cpudt, itabdocs-bktxt, itabdocs-xblnr, itabdocs-belnr,itabdocs-name1(20),
+                               itabdocs-lifnr,depot, plnt, 120 itabdocs-dmbtr,  glacc+4(6), glamt. " glname(7).
+                 ELSE.
+                       WRITE: glacc+4(6), glamt. "glname(7).
+                 ENDIF.
+               cnt = cnt + 1.
+               ENDLOOP.
+               WRITE:/180 ''.
+
+        ENDLOOP.
+        SKIP.
+        ULINE.
+        SKIP.
+        WRITE:/60 'General Ledger Accounts Totals'.
+
+        SORT itabtotal BY sakto.
+        LOOP AT itabtotal.
+            glname = ''.
+            SELECT SINGLE txt50 INTO glname FROM skat WHERE saknr EQ itabtotal-sakto AND spras EQ 'EN' AND ktopl EQ '1000'.
+            IF sy-subrc GT 0.
+              glname = ''.
+            ENDIF.
+            WRITE:/60 itabtotal-sakto, glname, itabtotal-dmbtr.
+            grandtotal = grandtotal + itabtotal-dmbtr.
+        ENDLOOP.
+        SKIP.
+        WRITE:/71 'Grand Total', 108 grandtotal.
+TOP-OF-PAGE.
+        WRITE:/2 'Posting', 13 'Product',39 'Invoice',56 'Document',67 'Supplier',88 'Vendor',99 'Plant',129 'Amount', 137 'General Ledger'.
+
+        WRITE:/2 'Date',13 'Description',39 'Number',56 'Number',137 'Accounts'.
+        ULINE.
