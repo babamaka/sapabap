@@ -1,0 +1,213 @@
+*&---------------------------------------------------------------------*
+*& Report ZCLEARINGSORTER
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZCLEARINGSORTER NO STANDARD PAGE HEADING LINE-SIZE 300.
+TABLES: bkpf, bseg, bsas.
+TYPES: BEGIN OF itabGL,
+            belnr TYPE bkpf-belnr,
+            bldat TYPE bkpf-bldat,
+            buzei TYPE bseg-buzei,
+            koart TYPE bseg-koart,
+            hkont TYPE bseg-hkont,
+            pswsl TYPE bseg-pswsl,
+            shkzg TYPE bseg-shkzg,
+            dmbtr TYPE bseg-dmbtr,
+            wrbtr TYPE bseg-wrbtr,
+            bktxt TYPE bkpf-bktxt,
+            xblnr TYPE bkpf-xblnr,
+            sgtxt TYPE bseg-sgtxt,
+            stblg TYPE bkpf-stblg,
+            cleared TYPE bsas-belnr,
+            matched,
+       END OF itabgl,
+       BEGIN OF itabGLT,
+            belnr TYPE bkpf-belnr,
+            bldat TYPE bkpf-bldat,
+            hkont TYPE bseg-hkont,
+            wrbtr TYPE bseg-wrbtr,
+            bktxt TYPE bkpf-bktxt,
+            xblnr TYPE bkpf-xblnr,
+            sgtxt TYPE bseg-sgtxt,
+            stblg TYPE bkpf-stblg,
+            cleared TYPE bsas-belnr,
+            matched,
+       END OF itabGLT.
+DATA: BEGIN OF itmatch OCCURS 0,
+            belnr TYPE bkpf-belnr,
+            wrbtr TYPE bseg-wrbtr,
+            cnt TYPE P DECIMALS 0,
+      END OF itmatch,
+      BEGIN OF itdel OCCURS 0,
+            docno TYPE bkpf-belnr,
+      END OF itdel.
+DATA: itgl TYPE TABLE OF itabgl WITH HEADER LINE.
+DATA: itgl2 TYPE TABLE OF itabgl WITH HEADER LINE.
+DATA: itglt TYPE TABLE OF itabglt WITH HEADER LINE.
+DATA: itglt2 TYPE TABLE OF itabglt WITH HEADER LINE.
+DATA: found, same TYPE bseg-wrbtr.
+DATA: cnt TYPE P DECIMALS 0.
+DATA: docno TYPE bkpf-belnr, wrbtr TYPE bseg-wrbtr.
+PARAMETERS: dummy.
+        CLEAR itgl.
+        REFRESH itgl.
+        CLEAR itgl2.
+        REFRESH itgl2.
+        CLEAR itglt.
+        REFRESH itglt.
+        CLEAR itglt2.
+        REFRESH itglt2.
+
+        SELECT bkpf~belnr, bkpf~bldat, bseg~buzei, bseg~koart, bseg~hkont,
+               bseg~pswsl, bseg~shkzg, bseg~dmbtr, bseg~wrbtr, bkpf~bktxt,
+               bkpf~xblnr, bseg~sgtxt, rev~stblg, bsas~belnr AS cleared
+               INTO CORRESPONDING FIELDS OF TABLE @itgl FROM bseg INNER JOIN bkpf
+               ON bseg~belnr EQ bkpf~belnr
+               AND bkpf~bldat LE '20220331' AND bseg~gjahr EQ '2021'
+               AND bseg~bukrs EQ '1000' AND hkont EQ '0000115421'
+               AND bkpf~stblg EQ ''
+               LEFT OUTER JOIN bkpf AS rev ON
+               bkpf~belnr EQ rev~stblg
+               LEFT OUTER JOIN bsas ON bkpf~belnr EQ bsas~belnr.
+
+        SELECT bkpf~belnr, bkpf~bldat, bseg~buzei, bseg~koart, bseg~hkont,
+               bseg~pswsl, bseg~shkzg, bseg~dmbtr, bseg~wrbtr, bkpf~bktxt,
+               bkpf~xblnr, bseg~sgtxt, rev~stblg, bsas~belnr AS cleared
+               INTO CORRESPONDING FIELDS OF TABLE @itgl2 FROM bseg INNER JOIN bkpf
+               ON bseg~belnr EQ bkpf~belnr
+               AND bkpf~bldat LE '20220331' AND bseg~gjahr EQ '2021'
+               AND bseg~bukrs EQ '1000' AND hkont EQ '0000115423'
+               AND bkpf~stblg EQ ''
+               LEFT OUTER JOIN bkpf AS rev ON
+               bkpf~belnr EQ rev~stblg
+               LEFT OUTER JOIN bsas ON bkpf~belnr EQ bsas~belnr.
+
+        LOOP AT itgl.
+            IF itgl-stblg EQ '' AND itgl-cleared EQ ''.
+                  itglt-belnr = itgl-belnr.
+                  itglt-bldat = itgl-bldat.
+                  itglt-hkont = itgl-hkont.
+                  itglt-wrbtr = itgl-wrbtr.
+                  itglt-bktxt = itgl-bktxt.
+                  itglt-xblnr = itgl-xblnr.
+                  itglt-sgtxt = itgl-sgtxt.
+                  COLLECT itglt.
+             ENDIF.
+        ENDLOOP.
+        LOOP AT itgl2.
+            IF itgl2-stblg EQ '' AND itgl2-cleared EQ ''.
+                itglt2-belnr = itgl2-belnr.
+                itglt2-bldat = itgl2-bldat.
+                itglt2-hkont = itgl2-hkont.
+                itglt2-wrbtr = itgl2-wrbtr.
+                itglt2-bktxt = itgl2-bktxt.
+                itglt2-xblnr = itgl2-xblnr.
+                itglt2-sgtxt = itgl2-sgtxt.
+                COLLECT itglt2.
+             ENDIF.
+        ENDLOOP.
+
+        SORT itglt2 BY bldat.
+        cnt = 0.
+        CLEAR itmatch.
+        REFRESH itmatch.
+        CLEAR itdel.
+        REFRESH itdel.
+        LOOP AT itglt.
+              cnt = 0.
+              docno = ''.
+              wrbtr = '0'.
+              LOOP AT itglt2 WHERE wrbtr EQ itglt-wrbtr AND bldat GE itglt-bldat.
+                    cnt = cnt + 1.
+              ENDLOOP.
+              IF cnt EQ 1.
+                    itmatch-belnr = itglt2-belnr.
+                    itmatch-wrbtr = itglt2-wrbtr.
+                    itmatch-cnt = '1'.
+                    APPEND itmatch.
+              ELSE.
+                    LOOP AT itglt2 WHERE wrbtr EQ itglt-wrbtr AND bldat GE itglt-bldat.
+                       READ TABLE itmatch WITH TABLE KEY belnr = itglt2-belnr.
+                       IF sy-subrc GT 0.
+                            itmatch-belnr = itglt2-belnr.
+                            itmatch-wrbtr = itglt2-wrbtr.
+                            APPEND itmatch.
+                            cnt = cnt + 1.
+                       ENDIF.
+                    ENDLOOP.
+              ENDIF.
+
+              IF cnt GT 1. cnt = 2.ENDIF.
+              IF cnt = 0.cnt = 3.ENDIF.
+              itglt-matched = cnt.
+              MODIFY itglt.
+        ENDLOOP.
+
+
+        SORT itglt BY matched ASCENDING wrbtr DESCENDING.
+        cnt = 0.
+        SORT itmatch BY wrbtr DESCENDING.
+
+        LOOP AT itmatch.
+            cnt = 0.
+            LOOP AT itglt WHERE matched EQ '1' AND wrbtr EQ itmatch-wrbtr.
+                  cnt = cnt + 1.
+            ENDLOOP.
+            IF cnt GT 1.
+               LOOP AT itglt WHERE matched EQ '1' AND wrbtr EQ itmatch-wrbtr.
+                  itglt-matched = '2'.MODIFY itglt.
+               ENDLOOP.
+            ENDIF.
+        ENDLOOP.
+
+        SORT itglt BY matched ASCENDING wrbtr DESCENDING.
+
+        cnt = 0.
+        LOOP AT itglt WHERE matched EQ '1'.
+          found = '0'.
+          WRITE: 3 itglt-belnr, itglt-wrbtr, itglt-hkont, itglt-bldat, itglt-sgtxt(35).
+          LOOP AT itglt2 WHERE wrbtr EQ itglt-wrbtr AND bldat GE itglt-bldat.
+              WRITE: 89 itglt2-belnr, itglt2-wrbtr, itglt2-hkont, itglt2-bktxt(15),
+                        itglt2-xblnr, itglt2-bldat, itglt2-sgtxt(35).
+              WRITE:/''.
+              found = '1'.
+          ENDLOOP.
+          IF found EQ '0'.
+                WRITE:/''.
+          ENDIF.
+          cnt = cnt + 1.
+***          IF cnt EQ 100.EXIT.ENDIF.
+        ENDLOOP.
+
+
+        LOOP AT itglt2.
+              READ TABLE itmatch WITH TABLE KEY belnr = itglt2-belnr.
+              IF sy-subrc EQ 0.
+                  DELETE itglt2.
+              ENDIF.
+        ENDLOOP.
+
+        CLEAR itmatch.
+        REFRESH itmatch.
+        LOOP AT itglt WHERE matched NE '1'.
+          found = '0'.
+          WRITE: 3 itglt-belnr, itglt-wrbtr, itglt-hkont, itglt-bldat, itglt-sgtxt(35).
+          LOOP AT itglt2 WHERE wrbtr EQ itglt-wrbtr AND bldat GE itglt-bldat.
+              READ TABLE itmatch WITH TABLE KEY belnr = itglt2-belnr.
+              IF sy-subrc GT 0.
+                  WRITE: 89 itglt2-belnr, itglt2-wrbtr, itglt2-hkont, itglt2-bktxt(15),
+                            itglt2-xblnr, itglt2-bldat, itglt2-sgtxt(35).
+                  WRITE:/''.
+                  itmatch-belnr = itglt2-belnr.
+                  itmatch-wrbtr = itglt2-wrbtr.
+                  APPEND itmatch.
+                  found = '1'.
+              ENDIF.
+          ENDLOOP.
+          IF found EQ '0'.
+                WRITE:/''.
+          ENDIF.
+          cnt = cnt + 1.
+****          IF cnt EQ 100.EXIT.ENDIF.
+        ENDLOOP.
